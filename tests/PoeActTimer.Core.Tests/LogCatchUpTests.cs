@@ -83,6 +83,118 @@ public class LogCatchUpTests
     }
 
     [Fact]
+    public void LongGapBetweenEventsIsNotCredited()
+    {
+        var state = RunningAct1();
+        var timer = new RunTimer(state, TimeSpan.FromSeconds(20));
+        string[] lines =
+        [
+            L(10, "[WINDOW] Gained focus"),
+            L(10 + 16 * 60, "[WINDOW] Gained focus"),
+            L(10 + 16 * 60 + 30, "[WINDOW] Gained focus"),
+        ];
+
+        LogCatchUp.Replay(timer, lines, T0, S(2000), gameRunningNow: false);
+
+        Assert.Equal(40, state.Run!.Total.TotalSeconds);
+    }
+
+    [Fact]
+    public void GapWithinCapIsCredited()
+    {
+        var state = RunningAct1();
+        var timer = new RunTimer(state, TimeSpan.FromSeconds(20));
+        string[] lines = [L(10, "[WINDOW] Gained focus"), L(10 + 14 * 60, "[WINDOW] Gained focus")];
+
+        LogCatchUp.Replay(timer, lines, T0, S(2000), gameRunningNow: false);
+
+        Assert.Equal(10 + 14 * 60, state.Run!.Total.TotalSeconds);
+    }
+
+    [Fact]
+    public void FinalSegmentStopsWhereIdleBegan()
+    {
+        var state = RunningAct1();
+        var timer = new RunTimer(state, TimeSpan.FromSeconds(20));
+        string[] lines = [L(10, "[WINDOW] Gained focus")];
+
+        LogCatchUp.Replay(timer, lines, T0, S(300), gameRunningNow: true, idleNow: TimeSpan.FromSeconds(200));
+
+        Assert.Equal(100, state.Run!.Total.TotalSeconds);
+    }
+
+    [Fact]
+    public void FinalSegmentIgnoresIdleBelowAfkThreshold()
+    {
+        var state = RunningAct1();
+        var timer = new RunTimer(state, TimeSpan.FromSeconds(20));
+        string[] lines = [L(10, "[WINDOW] Gained focus")];
+
+        LogCatchUp.Replay(timer, lines, T0, S(300), gameRunningNow: true, idleNow: TimeSpan.FromSeconds(5));
+
+        Assert.Equal(300, state.Run!.Total.TotalSeconds);
+    }
+
+    [Fact]
+    public void FinalSegmentLongerThanCapIsNotCredited()
+    {
+        var state = RunningAct1();
+        var timer = new RunTimer(state, TimeSpan.FromSeconds(20));
+        string[] lines = [L(10, "[WINDOW] Gained focus")];
+
+        LogCatchUp.Replay(timer, lines, T0, S(10 + 20 * 60), gameRunningNow: true);
+
+        Assert.Equal(10, state.Run!.Total.TotalSeconds);
+    }
+
+    [Fact]
+    public void CapIsConfigurable()
+    {
+        var state = RunningAct1();
+        var timer = new RunTimer(state, TimeSpan.FromSeconds(20));
+        string[] lines = [L(10, "[WINDOW] Gained focus"), L(100, "[WINDOW] Gained focus")];
+
+        LogCatchUp.Replay(timer, lines, T0, S(100), gameRunningNow: false, maxGap: TimeSpan.FromSeconds(60));
+
+        Assert.Equal(10, state.Run!.Total.TotalSeconds);
+    }
+
+    [Fact]
+    public void ReplayWithoutRunStartsRunFromStrand()
+    {
+        var state = new TimerState { SavedAt = T0 };
+        var timer = new RunTimer(state, TimeSpan.FromSeconds(20));
+        string[] lines =
+        [
+            L(10, "Async connecting to lon.login.pathofexile.com:20487"),
+            L(20, "Generating level 1 area \"1_1_1\" with seed 1"),
+            L(22, "[SCENE] Set Source [The Twilight Strand]"),
+        ];
+
+        LogCatchUp.Replay(timer, lines, T0, S(82), gameRunningNow: true);
+
+        Assert.NotNull(state.Run);
+        Assert.Equal(S(20), state.Run!.StartedAt);
+        Assert.False(state.InMenu);
+        Assert.Equal(60, state.Run.Total.TotalSeconds);
+        Assert.Empty(state.Run.Recovered);
+    }
+
+    [Fact]
+    public void ReplayWithoutRunRestoresMenuState()
+    {
+        var state = new TimerState { SavedAt = T0, InMenu = false, AwaitFirstZone = false };
+        var timer = new RunTimer(state, TimeSpan.FromSeconds(20));
+        string[] lines = [L(10, "Async connecting to lon.login.pathofexile.com:20487")];
+
+        LogCatchUp.Replay(timer, lines, T0, S(20), gameRunningNow: true);
+
+        Assert.True(state.InMenu);
+        Assert.True(state.AwaitFirstZone);
+        Assert.Null(state.Run);
+    }
+
+    [Fact]
     public void ClosedGameStopsAtLastEvent()
     {
         var state = RunningAct1();
