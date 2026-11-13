@@ -101,6 +101,74 @@ public class RunTimerTests
         Assert.Equal(TimerStatus.Minimized, t.Status);
         t.Apply(new LoadingScreen(S(25), 4.0), S(25), Unfocused);
         Assert.Equal(20, Total(t));
+        Assert.Equal(0, t.State.Run!.LoadingTicks);
+    }
+
+    [Fact]
+    public void LongGapBetweenLiveTicksIsNotCredited()
+    {
+        var t = NewRun();
+        var gap = TimeSpan.FromSeconds(5);
+        t.Tick(S(10), Play);
+        Assert.Equal(10, Total(t));
+        t.Tick(S(3610), Play, gap);
+        Assert.Equal(10, Total(t));
+        t.Tick(S(3615), Play, gap);
+        Assert.Equal(15, Total(t));
+    }
+
+    [Fact]
+    public void LongGapIsCreditedWithoutMaxGap()
+    {
+        var t = NewRun();
+        t.Tick(S(10), Play);
+        t.Tick(S(3610), Play);
+        Assert.Equal(3610, Total(t));
+    }
+
+    [Fact]
+    public void ManualPauseDoesNotLeakIntoNewRun()
+    {
+        var t = RunAtAct3();
+        t.ToggleManualPause(S(25), Play);
+        Assert.Equal(TimerStatus.ManualPause, t.Status);
+        Login(t, 30);
+        Gen(t, 31, "1_1_1"); Enter(t, 31);
+        Assert.False(t.State.ManualPause);
+        Assert.Equal(TimerStatus.Running, t.Status);
+    }
+
+    [Fact]
+    public void ResetRunClearsManualPause()
+    {
+        var t = NewRun();
+        t.ToggleManualPause(S(5), Play);
+        t.ResetRun(S(6), Play);
+        Assert.False(t.State.ManualPause);
+    }
+
+    [Fact]
+    public void AfkDeductionSpanningActSplit()
+    {
+        var t = NewRun();
+        t.Tick(S(10), Play);
+        Gen(t, 10, "1_2_1");
+        t.Tick(S(15), Play);
+        t.Tick(S(30), Idle(25));
+        Assert.Equal(TimerStatus.Afk, t.Status);
+        Assert.Equal(5, Act(t, 1));
+        Assert.Equal(0, Act(t, 2));
+    }
+
+    [Fact]
+    public void FinishWhileOtherCharacterDoesNotFinish()
+    {
+        var t = RunAtAct3();
+        Login(t, 30);
+        Gen(t, 31, "2_7_town"); Enter(t, 31);
+        Gen(t, 40, "2_11_endgame_town"); Enter(t, 40);
+        Assert.Null(t.State.Run!.FinishedAt);
+        Assert.Equal(TimerStatus.OtherCharacter, t.Status);
     }
 
     [Fact]

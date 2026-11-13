@@ -38,13 +38,14 @@ public sealed class RunTimer
         if (at > lastTick) lastTick = at;
     }
 
-    public void Tick(DateTime now, GameSnapshot snap)
+    public void Tick(DateTime now, GameSnapshot snap, TimeSpan? maxGap = null)
     {
         if (!started) { Start(now, snap); return; }
         var next = Compute(snap);
         if (now > lastTick)
         {
-            if (Status == TimerStatus.Running) Credit(lastTick, now);
+            bool gapTooLong = maxGap is { } limit && now - lastTick > limit;
+            if (Status == TimerStatus.Running && !gapTooLong) Credit(lastTick, now);
             lastTick = now;
         }
         if (next == TimerStatus.Afk && Status != TimerStatus.Afk) Deduct(now - snap.Idle, now);
@@ -72,6 +73,7 @@ public sealed class RunTimer
         Tick(now, snap);
         if (IsActive) Archive(abandoned: true);
         State.Run = null;
+        State.ManualPause = false;
         segments.Clear();
         Status = Compute(snap);
     }
@@ -111,8 +113,7 @@ public sealed class RunTimer
                 break;
             case LoadingScreen l when IsActive && !s.Foreign:
                 var duration = TimeSpan.FromSeconds(l.Seconds);
-                s.Run!.LoadingTicks += duration.Ticks;
-                Deduct(at - duration, at);
+                s.Run!.LoadingTicks += Deduct(at - duration, at);
                 break;
             case LevelUp u:
                 OnLevelUp(u.CharacterName);
@@ -177,6 +178,7 @@ public sealed class RunTimer
     {
         State.Run = new RunState { StartedAt = at };
         State.Foreign = false;
+        State.ManualPause = false;
         segments.Clear();
     }
 
@@ -215,20 +217,24 @@ public sealed class RunTimer
         segments.RemoveAll(x => x.To < horizon);
     }
 
-    void Deduct(DateTime from, DateTime to)
+    long Deduct(DateTime from, DateTime to)
     {
-        if (State.Run is null || to <= from) return;
+        if (State.Run is null || to <= from) return 0;
+        long removed = 0;
         var kept = new List<Segment>(segments.Count + 1);
         foreach (var seg in segments)
         {
             var overlapFrom = seg.From > from ? seg.From : from;
             var overlapTo = seg.To < to ? seg.To : to;
             if (overlapTo <= overlapFrom) { kept.Add(seg); continue; }
-            State.Run.ActTicks[seg.Act] -= (overlapTo - overlapFrom).Ticks;
+            var ticks = (overlapTo - overlapFrom).Ticks;
+            State.Run.ActTicks[seg.Act] -= ticks;
+            removed += ticks;
             if (seg.From < overlapFrom) kept.Add(seg with { To = overlapFrom });
             if (overlapTo < seg.To) kept.Add(seg with { From = overlapTo });
         }
         segments.Clear();
         segments.AddRange(kept);
+        return removed;
     }
 }
