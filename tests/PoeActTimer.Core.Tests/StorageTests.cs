@@ -51,6 +51,35 @@ public sealed class StorageTests : IDisposable
     }
 
     [Fact]
+    public void CorruptFileThatCannotBeMovedIsNeverOverwritten()
+    {
+        var statePath = Path.Combine(dir, "state.json");
+        var historyPath = Path.Combine(dir, "history.json");
+        File.WriteAllText(statePath, "{ broken state");
+        File.WriteAllText(historyPath, "{ broken history");
+        var messages = new List<string>();
+        var storage = new Storage(dir, TimeSpan.Zero) { Log = messages.Add };
+
+        // Readers are allowed, delete/move is not: the backup move fails.
+        using (new FileStream(statePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+        using (new FileStream(historyPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Assert.Null(storage.LoadState().Run);
+            Assert.True(storage.StateReadOnly);
+            Assert.False(storage.AppendHistory(new RunState()));
+            Assert.Equal("{ broken history", File.ReadAllText(historyPath));
+            Assert.Empty(Directory.GetFiles(dir, "*.bak"));
+            Assert.DoesNotContain(messages, m => m.Contains("moved to"));
+        }
+        // The lock is gone, but state.json stays read-only for this session.
+        storage.SaveState(new TimerState { LogOffset = 5 });
+        Assert.Equal("{ broken state", File.ReadAllText(statePath));
+        // history.json is re-read on every append: now it is backed up before a new one is written.
+        Assert.True(storage.AppendHistory(new RunState()));
+        Assert.Equal("{ broken history", File.ReadAllText(Assert.Single(Directory.GetFiles(dir, "history.json.*.bak"))));
+    }
+
+    [Fact]
     public void SecondCorruptionKeepsFirstBackup()
     {
         var path = Path.Combine(dir, "state.json");

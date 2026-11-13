@@ -120,7 +120,13 @@ public sealed class Storage
             {
                 var backup = BackupPath(path);
                 try { File.Move(path, backup); }
-                catch (Exception moveEx) when (moveEx is IOException or UnauthorizedAccessException) { }
+                catch (Exception moveEx) when (moveEx is IOException or UnauthorizedAccessException)
+                {
+                    // The corrupt original is still in place: never overwrite it this session.
+                    unreadable = true;
+                    Log?.Invoke($"{name} is corrupt ({ex.Message}) and could not be backed up ({moveEx.Message}); it will not be overwritten this session.");
+                    return null;
+                }
                 Log?.Invoke($"{name} is corrupt ({ex.Message}); moved to {Path.GetFileName(backup)}.");
                 return null;
             }
