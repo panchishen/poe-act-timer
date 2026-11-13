@@ -407,6 +407,76 @@ public class RunTimerTests
     }
 
     [Fact]
+    public void ClockMovedFarBackwardsResyncsWithoutCredit()
+    {
+        var t = NewRun();
+        t.Tick(S(600), Play);
+        Assert.Equal(600, Total(t));
+        t.Tick(S(0), Play); // clock moved back 10 minutes
+        t.Tick(S(10), Play);
+        Assert.Equal(610, Total(t));
+    }
+
+    [Fact]
+    public void SmallBackwardsStepDoesNotResync()
+    {
+        var t = NewRun();
+        t.Tick(S(10.9), Play);
+        t.Tick(S(10), Play); // log second truncation
+        t.Tick(S(12), Play);
+        Assert.Equal(12, Total(t), 3);
+    }
+
+    [Fact]
+    public void LiveActionsUseLiveMaxGap()
+    {
+        foreach (var action in new Action<RunTimer, DateTime>[]
+        {
+            (t, now) => t.ToggleManualPause(now, Play),
+            (t, now) => t.ResetRun(now, Play),
+            (t, now) => t.StartRunNow(now, Play),
+        })
+        {
+            var t = new RunTimer(new TimerState(), TimeSpan.FromSeconds(20), liveMaxGap: TimeSpan.FromSeconds(5));
+            t.Start(T0, Play);
+            Gen(t, 0, "1_1_1"); Enter(t, 0);
+            RunState? archived = null;
+            t.RunArchived += r => archived = r;
+            var run = t.State.Run!;
+            t.Tick(S(10), Play);
+            action(t, S(3610));
+            Assert.Equal(10, run.Total.TotalSeconds);
+        }
+    }
+
+    [Fact]
+    public void GameStartedResetsLogFocus()
+    {
+        var t = NewRun();
+        t.Apply(new FocusChanged(S(5), false), S(5), Play);
+        Assert.False(t.State.LogFocused);
+        t.Apply(new GameStarted(S(100)), S(100), Play);
+        Assert.True(t.State.LogFocused);
+    }
+
+    [Fact]
+    public void ManualPauseWithoutActiveRunDoesNothing()
+    {
+        var t = new RunTimer(new TimerState(), TimeSpan.FromSeconds(20));
+        t.Start(T0, Play);
+        t.ToggleManualPause(S(1), Play);
+        Assert.False(t.State.ManualPause);
+        Assert.Equal(TimerStatus.NoRun, t.Status);
+
+        var finished = NewRun();
+        for (int act = 2; act <= 10; act++) Gen(finished, act, $"2_{act}_1");
+        Gen(finished, 20, "2_11_endgame_town");
+        finished.ToggleManualPause(S(21), Play);
+        Assert.False(finished.State.ManualPause);
+        Assert.Equal(TimerStatus.Finished, finished.Status);
+    }
+
+    [Fact]
     public void LanguageEventIsRaised()
     {
         var t = NewRun();

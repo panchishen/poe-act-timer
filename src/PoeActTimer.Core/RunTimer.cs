@@ -7,17 +7,25 @@ public readonly record struct GameSnapshot(bool GameRunning, bool Focused, TimeS
 public sealed class RunTimer
 {
     static readonly TimeSpan SegmentWindow = TimeSpan.FromMinutes(10);
+    static readonly TimeSpan ClockBackTolerance = TimeSpan.FromMinutes(1);
 
     readonly TimeSpan afkThreshold;
     readonly List<Segment> segments = new();
     DateTime lastTick;
     bool started;
 
-    public RunTimer(TimerState state, TimeSpan afkThreshold)
+    readonly TimeSpan? liveMaxGap;
+
+    /// <param name="liveMaxGap">Sleep guard for live actions (pause, reset, start now):
+    /// a gap since the previous tick longer than this is not credited.</param>
+    public RunTimer(TimerState state, TimeSpan afkThreshold, TimeSpan? liveMaxGap = null)
     {
         State = state;
         this.afkThreshold = afkThreshold;
+        this.liveMaxGap = liveMaxGap;
     }
+
+    public TimeSpan AfkThreshold => afkThreshold;
 
     public TimerState State { get; }
     public TimerStatus Status { get; private set; } = TimerStatus.NoRun;
@@ -42,6 +50,9 @@ public sealed class RunTimer
     {
         if (!started) { Start(now, snap); return; }
         var next = Compute(snap);
+        // The wall clock jumped back (manual change, time sync): resync without credit.
+        // Small steps back (log timestamps are truncated to seconds) are ignored as before.
+        if (now < lastTick - ClockBackTolerance) lastTick = now;
         if (now > lastTick)
         {
             bool gapTooLong = maxGap is { } limit && now - lastTick > limit;
@@ -63,14 +74,15 @@ public sealed class RunTimer
 
     public void ToggleManualPause(DateTime now, GameSnapshot snap)
     {
-        Tick(now, snap);
+        if (!IsActive) return;
+        Tick(now, snap, liveMaxGap);
         State.ManualPause = !State.ManualPause;
         Status = Compute(snap);
     }
 
     public void ResetRun(DateTime now, GameSnapshot snap)
     {
-        Tick(now, snap);
+        Tick(now, snap, liveMaxGap);
         if (IsActive) Archive(abandoned: true);
         State.Run = null;
         State.ManualPause = false;
@@ -80,7 +92,7 @@ public sealed class RunTimer
 
     public void StartRunNow(DateTime now, GameSnapshot snap)
     {
-        Tick(now, snap);
+        Tick(now, snap, liveMaxGap);
         if (IsActive) Archive(abandoned: true);
         StartRun(now);
         State.Run!.CurrentAct = Math.Max(1, State.LastAct);
@@ -95,6 +107,10 @@ public sealed class RunTimer
         switch (e)
         {
             case GameStarted:
+                s.LogFocused = true; // a new game session starts focused
+                s.InMenu = true;
+                s.AwaitFirstZone = true;
+                break;
             case LoginConnecting:
                 s.InMenu = true;
                 s.AwaitFirstZone = true;

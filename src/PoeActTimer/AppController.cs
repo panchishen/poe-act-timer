@@ -34,7 +34,7 @@ public sealed class AppController : IDisposable
         if (string.IsNullOrWhiteSpace(config.HotkeyToggle)) config.HotkeyToggle = "Ctrl+Alt+E";
         if (string.IsNullOrWhiteSpace(config.HotkeyReset)) config.HotkeyReset = "Ctrl+Alt+R";
         state = storage.LoadState();
-        timer = new RunTimer(state, TimeSpan.FromSeconds(config.AfkSeconds));
+        timer = new RunTimer(state, TimeSpan.FromSeconds(config.AfkSeconds), LiveMaxGap);
         timer.RunArchived += run => storage.AppendHistory(run);
         timer.LanguageChanged += OnLanguage;
         strings = Strings.For(config.Language ?? DefaultLanguage());
