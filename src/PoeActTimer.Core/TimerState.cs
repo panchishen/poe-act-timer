@@ -36,4 +36,6 @@ public sealed class TimerState
     public string? LogPath { get; set; }
     public long LogOffset { get; set; }
     public DateTime SavedAt { get; set; }
+    /// <summary>Archived runs not yet written to history.json (kept here so they are never lost).</summary>
+    public List<RunState> PendingHistory { get; set; } = new();
 }

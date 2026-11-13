@@ -8,7 +8,7 @@ namespace PoeActTimer;
 
 public sealed class AppController : IDisposable
 {
-    readonly Storage storage = new(AppContext.BaseDirectory);
+    readonly Storage storage = new(AppContext.BaseDirectory) { Log = LogMessage };
     readonly AppConfig config;
     readonly TimerState state;
     readonly RunTimer timer;
@@ -35,9 +35,12 @@ public sealed class AppController : IDisposable
         if (string.IsNullOrWhiteSpace(config.HotkeyReset)) config.HotkeyReset = "Ctrl+Alt+R";
         state = storage.LoadState();
         timer = new RunTimer(state, TimeSpan.FromSeconds(config.AfkSeconds), LiveMaxGap);
-        timer.RunArchived += run => storage.AppendHistory(run);
+        // Archived runs wait in state.json until history.json accepts them (flushed on every save).
+        timer.RunArchived += run => storage.QueueHistory(state, run);
         timer.LanguageChanged += OnLanguage;
         strings = Strings.For(config.Language ?? DefaultLanguage());
+        if (!FolderWritable(AppContext.BaseDirectory))
+            MessageBox.Show(strings.FolderNotWritable, "PoE Act Timer", MessageBoxButtons.OK, MessageBoxIcon.Warning);
 
         tray = new TrayIcon(Safe(TogglePause), Safe(StartNow), Safe(Reset), Safe(OpenHistory), Safe(ChooseLog), Safe(Shutdown));
 
@@ -71,17 +74,33 @@ public sealed class AppController : IDisposable
         catch (Exception ex) { LogError(ex); }
     };
 
-    static void LogError(Exception ex)
+    static void LogError(Exception ex) => LogMessage($"{ex.GetType().Name}: {ex.Message}");
+
+    internal static void LogMessage(string text)
     {
         try
         {
             var path = Path.Combine(AppContext.BaseDirectory, "error.log");
             var info = new FileInfo(path);
             if (info.Exists && info.Length > 1_000_000) info.Delete();
-            File.AppendAllText(path, $"{DateTime.Now:O} {ex.GetType().Name}: {ex.Message}{Environment.NewLine}");
+            File.AppendAllText(path, $"{DateTime.Now:O} {text}{Environment.NewLine}");
         }
         catch (Exception)
         {
+        }
+    }
+
+    static bool FolderWritable(string directory)
+    {
+        try
+        {
+            var probe = Path.Combine(directory, $".write-test-{Guid.NewGuid():N}.tmp");
+            using (new FileStream(probe, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1, FileOptions.DeleteOnClose)) { }
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
         }
     }
 
@@ -131,7 +150,7 @@ public sealed class AppController : IDisposable
             LogCatchUp.Replay(timer, tailer.ReadAllNewLines(), state.SavedAt, now, lastSnap.GameRunning, lastSnap.Idle);
             // A run that finished during replay was archived before its recovered span was added: re-queue it.
             if (!finishedBefore && state.Run is { FinishedAt: not null } finished)
-                storage.AppendHistory(finished);
+                storage.QueueHistory(state, finished);
         }
         else
         {

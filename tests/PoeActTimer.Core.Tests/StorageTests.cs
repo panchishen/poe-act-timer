@@ -44,8 +44,120 @@ public sealed class StorageTests : IDisposable
         File.WriteAllText(Path.Combine(dir, "state.json"), "{ not json");
         var storage = new Storage(dir);
         Assert.Null(storage.LoadState().Run);
-        Assert.True(File.Exists(Path.Combine(dir, "state.json.bak")));
+        var backup = Assert.Single(Directory.GetFiles(dir, "state.json.*.bak"));
+        Assert.Equal("{ not json", File.ReadAllText(backup));
         Assert.False(File.Exists(Path.Combine(dir, "state.json")));
+        Assert.False(storage.StateReadOnly);
+    }
+
+    [Fact]
+    public void SecondCorruptionKeepsFirstBackup()
+    {
+        var path = Path.Combine(dir, "state.json");
+        File.WriteAllText(path, "{ first");
+        new Storage(dir).LoadState();
+        File.WriteAllText(path, "{ second");
+        new Storage(dir).LoadState();
+        var contents = Directory.GetFiles(dir, "state.json.*.bak").Select(File.ReadAllText).OrderBy(x => x).ToList();
+        Assert.Equal(new[] { "{ first", "{ second" }, contents);
+    }
+
+    [Fact]
+    public void LoadStateRetriesUntilLockIsReleased()
+    {
+        var path = Path.Combine(dir, "state.json");
+        new Storage(dir).SaveState(new TimerState { LogOffset = 9 });
+        var storage = new Storage(dir);
+        var lockStream = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        var release = Task.Run(async () => { await Task.Delay(300); lockStream.Dispose(); });
+
+        var loaded = storage.LoadState();
+
+        release.Wait();
+        Assert.Equal(9, loaded.LogOffset);
+        Assert.False(storage.StateReadOnly);
+    }
+
+    [Fact]
+    public void LockedStateBecomesReadOnlyAndIsNotOverwritten()
+    {
+        var path = Path.Combine(dir, "state.json");
+        new Storage(dir).SaveState(new TimerState { LogOffset = 9 });
+        var storage = new Storage(dir);
+        var messages = new List<string>();
+        storage.Log = messages.Add;
+        TimerState loaded;
+        using (new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            loaded = storage.LoadState();
+
+        Assert.Equal(0, loaded.LogOffset);
+        Assert.True(storage.StateReadOnly);
+        Assert.NotEmpty(messages);
+        storage.SaveState(new TimerState { LogOffset = 5 });
+        Assert.Equal(9, new Storage(dir).LoadState().LogOffset);
+    }
+
+    [Fact]
+    public void LockedConfigBecomesReadOnlyAndIsNotOverwritten()
+    {
+        var path = Path.Combine(dir, "config.json");
+        new Storage(dir).SaveConfig(new AppConfig { AfkSeconds = 42 });
+        var storage = new Storage(dir);
+        AppConfig loaded;
+        using (new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            loaded = storage.LoadConfig();
+
+        Assert.Equal(20, loaded.AfkSeconds);
+        Assert.True(storage.ConfigReadOnly);
+        storage.SaveConfig(new AppConfig { AfkSeconds = 7 });
+        Assert.Equal(42, new Storage(dir).LoadConfig().AfkSeconds);
+    }
+
+    [Fact]
+    public void SaveStateFlushesPendingHistory()
+    {
+        var storage = new Storage(dir);
+        var state = new TimerState();
+        var run = new RunState { Abandoned = true };
+        storage.QueueHistory(state, run);
+        storage.SaveState(state);
+        Assert.Empty(state.PendingHistory);
+        Assert.Equal(run.Id, Assert.Single(storage.LoadHistory()).Id);
+        Assert.Empty(storage.LoadState().PendingHistory);
+    }
+
+    [Fact]
+    public void PendingHistorySurvivesUnwritableHistory()
+    {
+        var storage = new Storage(dir);
+        var first = new RunState();
+        Assert.True(storage.AppendHistory(first));
+        var state = new TimerState();
+        var run = new RunState { Abandoned = true };
+        using (new FileStream(storage.HistoryPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            storage.QueueHistory(state, run);
+            storage.SaveState(state);
+            Assert.False(storage.AppendHistory(new RunState()));
+        }
+        Assert.Equal(run.Id, Assert.Single(state.PendingHistory).Id);
+        var reloaded = new Storage(dir).LoadState();
+        Assert.Equal(run.Id, Assert.Single(reloaded.PendingHistory).Id);
+
+        storage.SaveState(reloaded);
+        Assert.Empty(reloaded.PendingHistory);
+        Assert.Equal(new[] { first.Id, run.Id }, storage.LoadHistory().Select(r => r.Id));
+    }
+
+    [Fact]
+    public void QueueHistoryReplacesSameRun()
+    {
+        var storage = new Storage(dir);
+        var state = new TimerState();
+        var run = new RunState();
+        storage.QueueHistory(state, run);
+        storage.QueueHistory(state, run);
+        Assert.Single(state.PendingHistory);
     }
 
     [Fact]
