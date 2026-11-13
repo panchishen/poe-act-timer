@@ -183,7 +183,7 @@ public sealed class AppController : IDisposable
                 {
                     foreach (var line in tailer.ReadNewLines())
                         foreach (var e in LogParser.Parse(line))
-                            timer.Apply(e, now, lastSnap);
+                            if (LiveLog.IsLive(e, now)) timer.Apply(e, now, lastSnap);
                 }
                 catch (IOException)
                 {
