@@ -187,14 +187,26 @@ public sealed class RunTimer
         if (!IsActive) return;
         if (s.Run!.CharacterName is null)
         {
-            if (!s.Foreign) s.Run.CharacterName = name;
+            if (!s.Foreign)
+            {
+                s.Run.CharacterName = name;
+                s.StrandLoginAt = null; // the run's own character is on: no new character since that login
+            }
             return;
         }
         bool same = string.Equals(name, s.Run.CharacterName, StringComparison.Ordinal);
-        if (!same && level == 2 && s.Run.CurrentAct == 1 && s.StrandLoginAt is { } loginAt)
+        if (same)
+        {
+            // The run's own character levelled after the last strand login: it was a relog, not a new character.
+            s.StrandLoginAt = null;
+        }
+        else if (level == 2 && s.Run.CurrentAct == 1
+            && s.StrandLoginAt is { } loginAt && loginAt > s.Run.StartedAt)
         {
             // A new character was created while the previous run was still in act 1: its strand
-            // entry looked like a relog. Time between that login and this level-up stays in the old run.
+            // entry looked like a relog. Only a re-login after the run's own start counts, so a party
+            // member's level 2 in the run's own strand does not restart it.
+            // Time between that login and this level-up stays in the old run.
             Archive(abandoned: true);
             StartRun(loginAt);
             s.Run!.CharacterName = name;

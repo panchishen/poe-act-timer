@@ -504,6 +504,41 @@ public class RunTimerTests
     }
 
     [Fact]
+    public void PartyMemberLevel2InRunsOwnStrandDoesNotRestartTheRun()
+    {
+        // No re-login: the strand entry that started the run is not a new character's login.
+        var t = NewRun();
+        Level(t, 5, "Hero_Alpha");
+        var id = t.State.Run!.Id;
+        RunState? archived = null;
+        t.RunArchived += r => archived = r;
+        Level(t, 60, "Party_Member");
+
+        Assert.Null(archived);
+        Assert.Equal(id, t.State.Run!.Id);
+        Assert.Equal("Hero_Alpha", t.State.Run.CharacterName);
+        Assert.Equal(TimerStatus.OtherCharacter, t.Status); // documented limitation
+    }
+
+    [Fact]
+    public void OwnLevelUpAfterStrandReloginRulesOutANewCharacter()
+    {
+        var t = NewRun();
+        Level(t, 5, "Hero_Alpha");
+        var id = t.State.Run!.Id;
+        RunState? archived = null;
+        t.RunArchived += r => archived = r;
+        Login(t, 30);
+        Gen(t, 31, "1_1_1"); Enter(t, 31);
+        LevelTo(t, 40, "Hero_Alpha", 3);
+        Level(t, 60, "Party_Member");
+
+        Assert.Null(archived);
+        Assert.Equal(id, t.State.Run!.Id);
+        Assert.Equal(TimerStatus.OtherCharacter, t.Status);
+    }
+
+    [Fact]
     public void AltWithHigherLevelInStrandIsForeign()
     {
         var t = NewRun();
