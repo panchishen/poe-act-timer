@@ -27,45 +27,54 @@ public sealed class AppController : IDisposable
 
     public AppController()
     {
-        config = storage.LoadConfig();
-        config.Opacity = Math.Clamp(config.Opacity, 0.2, 1.0);
-        config.AfkSeconds = Math.Max(5, config.AfkSeconds);
-        if (string.IsNullOrWhiteSpace(config.HotkeyPause)) config.HotkeyPause = "Ctrl+Alt+P";
-        if (string.IsNullOrWhiteSpace(config.HotkeyToggle)) config.HotkeyToggle = "Ctrl+Alt+E";
-        if (string.IsNullOrWhiteSpace(config.HotkeyReset)) config.HotkeyReset = "Ctrl+Alt+R";
-        state = storage.LoadState();
-        timer = new RunTimer(state, TimeSpan.FromSeconds(config.AfkSeconds), LiveMaxGap);
-        // Archived runs wait in state.json until history.json accepts them (flushed on every save).
-        timer.RunArchived += run => storage.QueueHistory(state, run);
-        timer.LanguageChanged += OnLanguage;
-        strings = Strings.For(config.Language ?? DefaultLanguage());
-        if (!FolderWritable(AppContext.BaseDirectory))
-            MessageBox.Show(strings.FolderNotWritable, "PoE Act Timer", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-
-        tray = new TrayIcon(Safe(TogglePause), Safe(StartNow), Safe(Reset), Safe(OpenHistory), Safe(ChooseLog), Safe(Shutdown));
-
-        overlay.BackgroundOpacity = config.Opacity;
-        overlay.Location = InitialLocation();
-        overlay.PauseClicked += Safe(TogglePause);
-        overlay.ExpandToggled += Safe(ToggleExpanded);
-        overlay.Moved += p =>
+        // A failure part-way must not leave a tray icon, overlay or hotkeys behind.
+        try
         {
-            try { config.OverlayX = p.X; config.OverlayY = p.Y; storage.SaveConfig(config); }
-            catch (Exception) { }
-        };
-        overlay.Show();
-        overlay.Expanded = config.Expanded;
+            config = storage.LoadConfig();
+            config.Opacity = Math.Clamp(config.Opacity, 0.2, 1.0);
+            config.AfkSeconds = Math.Max(5, config.AfkSeconds);
+            if (string.IsNullOrWhiteSpace(config.HotkeyPause)) config.HotkeyPause = "Ctrl+Alt+P";
+            if (string.IsNullOrWhiteSpace(config.HotkeyToggle)) config.HotkeyToggle = "Ctrl+Alt+E";
+            if (string.IsNullOrWhiteSpace(config.HotkeyReset)) config.HotkeyReset = "Ctrl+Alt+R";
+            state = storage.LoadState();
+            timer = new RunTimer(state, TimeSpan.FromSeconds(config.AfkSeconds), LiveMaxGap);
+            // Archived runs wait in state.json until history.json accepts them (flushed on every save).
+            timer.RunArchived += run => storage.QueueHistory(state, run);
+            timer.LanguageChanged += OnLanguage;
+            strings = Strings.For(config.Language ?? DefaultLanguage());
+            if (!FolderWritable(AppContext.BaseDirectory))
+                MessageBox.Show(strings.FolderNotWritable, "PoE Act Timer", MessageBoxButtons.OK, MessageBoxIcon.Warning);
 
-        // A failed registration is ignored: tray and overlay buttons still work.
-        hotkeys.Register(config.HotkeyPause, Safe(TogglePause));
-        hotkeys.Register(config.HotkeyToggle, Safe(ToggleExpanded));
-        hotkeys.Register(config.HotkeyReset, Safe(Reset));
+            tray = new TrayIcon(Safe(TogglePause), Safe(StartNow), Safe(Reset), Safe(OpenHistory), Safe(ChooseLog), Safe(Shutdown));
 
-        lastSnap = watcher.Snapshot();
-        TryAttachLog(DateTime.Now, allowCatchUp: true);
-        loop.Tick += (_, _) => Step();
-        loop.Start();
-        Step();
+            overlay.BackgroundOpacity = config.Opacity;
+            overlay.Location = InitialLocation();
+            overlay.PauseClicked += Safe(TogglePause);
+            overlay.ExpandToggled += Safe(ToggleExpanded);
+            overlay.Moved += p =>
+            {
+                try { config.OverlayX = p.X; config.OverlayY = p.Y; storage.SaveConfig(config); }
+                catch (Exception) { }
+            };
+            overlay.Show();
+            overlay.Expanded = config.Expanded;
+
+            // A failed registration is ignored: tray and overlay buttons still work.
+            hotkeys.Register(config.HotkeyPause, Safe(TogglePause));
+            hotkeys.Register(config.HotkeyToggle, Safe(ToggleExpanded));
+            hotkeys.Register(config.HotkeyReset, Safe(Reset));
+
+            lastSnap = watcher.Snapshot();
+            TryAttachLog(DateTime.Now, allowCatchUp: true);
+            loop.Tick += (_, _) => Step();
+            loop.Start();
+            Step();
+        }
+        catch
+        {
+            Dispose();
+            throw;
+        }
     }
 
     static Action Safe(Action action) => () =>
@@ -338,7 +347,7 @@ public sealed class AppController : IDisposable
         disposed = true;
         loop.Dispose();
         hotkeys.Dispose();
-        tray.Dispose();
+        tray?.Dispose(); // null when the constructor failed before creating it
         overlay.Dispose();
     }
 }

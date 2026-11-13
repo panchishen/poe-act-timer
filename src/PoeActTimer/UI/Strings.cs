@@ -10,7 +10,7 @@ public sealed record Strings(
     string HotkeyPause, string HotkeyToggle, string HotkeyReset, string LogMissing,
     string TrayPause, string TrayResume, string TrayStartNow, string TrayReset,
     string TrayHistory, string TrayChooseLog, string TrayExit,
-    string ResetConfirm, string StartNowConfirm, string FolderNotWritable)
+    string ResetConfirm, string StartNowConfirm, string FolderNotWritable, string StartFailed)
 {
     const string Nbsp = "\u00A0";
 
@@ -41,7 +41,8 @@ public sealed record Strings(
         TrayExit: "Выход",
         ResetConfirm: "Сбросить текущий забег? Он уйдёт в" + Nbsp + "историю как незавершённый.",
         StartNowConfirm: "Начать новый забег с" + Nbsp + "текущего акта? Текущий забег уйдёт в" + Nbsp + "историю как незавершённый.",
-        FolderNotWritable: "Папка с" + Nbsp + "таймером недоступна для" + Nbsp + "записи: забег и" + Nbsp + "история не" + Nbsp + "сохранятся. Переместите PoeActTimer.exe в" + Nbsp + "папку с" + Nbsp + "правом записи.");
+        FolderNotWritable: "Папка с" + Nbsp + "таймером недоступна для" + Nbsp + "записи: забег и" + Nbsp + "история не" + Nbsp + "сохранятся. Переместите PoeActTimer.exe в" + Nbsp + "папку с" + Nbsp + "правом записи.",
+        StartFailed: "Таймер не" + Nbsp + "запустился. Подробности в" + Nbsp + "файле error.log рядом с" + Nbsp + "PoeActTimer.exe.");
 
     public static readonly Strings En = new(
         ActFormat: "Act {0}",
@@ -70,7 +71,8 @@ public sealed record Strings(
         TrayExit: "Exit",
         ResetConfirm: "Reset the current run? It will be saved to history as unfinished.",
         StartNowConfirm: "Start a new run from the current act? The current run will be saved to history as unfinished.",
-        FolderNotWritable: "The timer folder is not writable: the run and history will not be saved. Move PoeActTimer.exe to a folder you can write to.");
+        FolderNotWritable: "The timer folder is not writable: the run and history will not be saved. Move PoeActTimer.exe to a folder you can write to.",
+        StartFailed: "The timer failed to start. See error.log next to PoeActTimer.exe for details.");
 
     public static Strings For(string? language) => language == "ru" ? Ru : En;
 
