@@ -63,7 +63,7 @@ public sealed class StorageTests : IDisposable
     }
 
     [Fact]
-    public void LoadStateRetriesUntilLockIsReleased()
+    public async Task LoadStateRetriesUntilLockIsReleased()
     {
         var path = Path.Combine(dir, "state.json");
         new Storage(dir).SaveState(new TimerState { LogOffset = 9 });
@@ -73,7 +73,7 @@ public sealed class StorageTests : IDisposable
 
         var loaded = storage.LoadState();
 
-        release.Wait();
+        await release;
         Assert.Equal(9, loaded.LogOffset);
         Assert.False(storage.StateReadOnly);
     }
