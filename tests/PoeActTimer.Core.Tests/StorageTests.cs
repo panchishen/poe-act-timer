@@ -61,4 +61,34 @@ public sealed class StorageTests : IDisposable
         Assert.Equal(2, history.Count);
         Assert.False(history[0].Abandoned);
     }
+
+    [Fact]
+    public void SaveWhileFileLockedDoesNotThrow()
+    {
+        var storage = new Storage(dir);
+        var path = Path.Combine(dir, "state.json");
+        File.WriteAllText(path, "{}");
+        using (new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            storage.SaveState(new TimerState { LogOffset = 5 });
+        }
+        Assert.Equal(0, storage.LoadState().LogOffset);
+        storage.SaveState(new TimerState { LogOffset = 7 });
+        Assert.Equal(7, storage.LoadState().LogOffset);
+        Assert.False(File.Exists(path + ".tmp"));
+    }
+
+    [Fact]
+    public void LoadWhileFileLockedReturnsDefaultsWithoutBackup()
+    {
+        var storage = new Storage(dir);
+        storage.SaveState(new TimerState { LogOffset = 9 });
+        var path = Path.Combine(dir, "state.json");
+        using (new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            Assert.Equal(0, storage.LoadState().LogOffset);
+        }
+        Assert.False(File.Exists(path + ".bak"));
+        Assert.True(File.Exists(path));
+    }
 }

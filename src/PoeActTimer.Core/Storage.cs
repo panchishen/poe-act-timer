@@ -29,7 +29,11 @@ public sealed class Storage
 
     public void SaveHistoryIfMissing()
     {
-        if (!File.Exists(HistoryPath)) Save("history.json", new List<RunState>());
+        try
+        {
+            if (!File.Exists(HistoryPath)) Save("history.json", new List<RunState>());
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
     }
 
     string Full(string name) => Path.Combine(directory, name);
@@ -37,23 +41,38 @@ public sealed class Storage
     T? Load<T>(string name) where T : class
     {
         var path = Full(name);
-        if (!File.Exists(path)) return null;
         try
         {
+            if (!File.Exists(path)) return null;
             return JsonSerializer.Deserialize<T>(File.ReadAllText(path), Json);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
         }
         catch (Exception ex) when (ex is JsonException or NotSupportedException)
         {
-            File.Move(path, path + ".bak", overwrite: true);
+            try { File.Move(path, path + ".bak", overwrite: true); }
+            catch (Exception moveEx) when (moveEx is IOException or UnauthorizedAccessException) { }
             return null;
         }
     }
 
-    void Save<T>(string name, T value)
+    bool Save<T>(string name, T value)
     {
         var path = Full(name);
         var tmp = path + ".tmp";
-        File.WriteAllText(tmp, JsonSerializer.Serialize(value, Json));
-        File.Move(tmp, path, overwrite: true);
+        try
+        {
+            File.WriteAllText(tmp, JsonSerializer.Serialize(value, Json));
+            File.Move(tmp, path, overwrite: true);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            try { File.Delete(tmp); }
+            catch (Exception delEx) when (delEx is IOException or UnauthorizedAccessException) { }
+            return false;
+        }
     }
 }
