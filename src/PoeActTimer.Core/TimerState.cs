@@ -2,7 +2,11 @@ using System.Text.Json.Serialization;
 
 namespace PoeActTimer.Core;
 
-public sealed record RecoveredSpan(DateTime From, DateTime To, long CountedTicks);
+public sealed record RecoveredSpan(DateTime From, DateTime To, long CountedTicks)
+{
+    /// <summary>Readable copy for history.json; ignored when loading.</summary>
+    public string CountedText => TimeFormat.FormatHms(TimeSpan.FromTicks(CountedTicks));
+}
 
 public sealed class RunState
 {
@@ -18,6 +22,17 @@ public sealed class RunState
 
     [JsonIgnore]
     public TimeSpan Total => TimeSpan.FromTicks(ActTicks.Sum());
+
+    // Readable copies for history.json (h:mm:ss). Read-only, so they are ignored when loading;
+    // the raw ticks above stay the source of truth.
+    public string TotalText => TimeFormat.FormatHms(Total);
+
+    /// <summary>Acts 1..10; "—" for an act that was not played.</summary>
+    public string[] ActsText => Enumerable.Range(1, 10)
+        .Select(act => ActTicks[act] > 0 || act == CurrentAct ? TimeFormat.FormatHms(ActTime(act)) : "—")
+        .ToArray();
+
+    public string LoadingText => TimeFormat.FormatHms(TimeSpan.FromTicks(LoadingTicks));
 
     public TimeSpan ActTime(int act) => TimeSpan.FromTicks(ActTicks[act]);
 }

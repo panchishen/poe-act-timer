@@ -293,7 +293,16 @@ public sealed class AppController : IDisposable
     {
         if (disposed) return;
         storage.SaveHistoryIfMissing();
-        Process.Start(new ProcessStartInfo(storage.HistoryPath) { UseShellExecute = true });
+        try
+        {
+            Process.Start(new ProcessStartInfo(storage.HistoryPath) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            // No app is associated with .json: fall back to Notepad.
+            LogError(ex);
+            Process.Start(new ProcessStartInfo("notepad.exe") { ArgumentList = { storage.HistoryPath }, UseShellExecute = false });
+        }
     }
 
     void ChooseLog()

@@ -1,3 +1,4 @@
+using System.Text.Encodings.Web;
 using System.Text.Json;
 
 namespace PoeActTimer.Core;
@@ -5,7 +6,8 @@ namespace PoeActTimer.Core;
 public sealed class Storage
 {
     const int LoadAttempts = 5;
-    static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
+    // Local files only: keep Cyrillic names and "—" readable instead of \uXXXX escapes.
+    static readonly JsonSerializerOptions Json = new() { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
     readonly string directory;
     readonly TimeSpan retryDelay;
 
