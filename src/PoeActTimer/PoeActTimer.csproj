@@ -13,5 +13,6 @@
   <ItemGroup>
     <ProjectReference Include="..\PoeActTimer.Core\PoeActTimer.Core.csproj" />
     <EmbeddedResource Include="Assets\JetBrainsMono-*.ttf" LogicalName="%(Filename)%(Extension)" />
+    <None Include="Assets\OFL.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Link="OFL-JetBrainsMono.txt" />
   </ItemGroup>
 </Project>
