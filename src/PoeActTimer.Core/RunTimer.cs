@@ -110,10 +110,12 @@ public sealed class RunTimer
                 s.LogFocused = true; // a new game session starts focused
                 s.InMenu = true;
                 s.AwaitFirstZone = true;
+                s.StrandLoginAt = null;
                 break;
             case LoginConnecting:
                 s.InMenu = true;
                 s.AwaitFirstZone = true;
+                s.StrandLoginAt = null;
                 break;
             case GameClosed:
                 s.InMenu = true;
@@ -132,7 +134,7 @@ public sealed class RunTimer
                 s.Run!.LoadingTicks += Deduct(at - duration, at);
                 break;
             case LevelUp u:
-                OnLevelUp(u.CharacterName);
+                OnLevelUp(u.CharacterName, u.Level);
                 break;
             case AreaGenerated g:
                 OnAreaGenerated(g.AreaId, at);
@@ -151,6 +153,7 @@ public sealed class RunTimer
             s.AwaitFirstZone = false;
             if (areaId == Zones.TwilightStrand)
             {
+                s.StrandLoginAt = at;
                 if (IsActive && s.Run!.CurrentAct == 1) { s.Foreign = false; return; }
                 if (IsActive) Archive(abandoned: true);
                 StartRun(at);
@@ -178,7 +181,7 @@ public sealed class RunTimer
         }
     }
 
-    void OnLevelUp(string name)
+    void OnLevelUp(string name, int level)
     {
         var s = State;
         if (!IsActive) return;
@@ -187,7 +190,18 @@ public sealed class RunTimer
             if (!s.Foreign) s.Run.CharacterName = name;
             return;
         }
-        s.Foreign = !string.Equals(name, s.Run.CharacterName, StringComparison.Ordinal);
+        bool same = string.Equals(name, s.Run.CharacterName, StringComparison.Ordinal);
+        if (!same && level == 2 && s.Run.CurrentAct == 1 && s.StrandLoginAt is { } loginAt)
+        {
+            // A new character was created while the previous run was still in act 1: its strand
+            // entry looked like a relog. Time between that login and this level-up stays in the old run.
+            Archive(abandoned: true);
+            StartRun(loginAt);
+            s.Run!.CharacterName = name;
+            s.StrandLoginAt = null;
+            return;
+        }
+        s.Foreign = !same;
     }
 
     void StartRun(DateTime at)

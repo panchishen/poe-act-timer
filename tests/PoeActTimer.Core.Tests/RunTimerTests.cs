@@ -476,6 +476,69 @@ public class RunTimerTests
         Assert.Equal(TimerStatus.Finished, finished.Status);
     }
 
+    static void LevelTo(RunTimer t, double s, string name, int level) =>
+        t.Apply(new LevelUp(S(s), name, level), S(s), Play);
+
+    [Fact]
+    public void NewCharacterCreatedDuringAct1StartsNewRun()
+    {
+        var t = NewRun();
+        Level(t, 5, "Hero_Alpha");
+        var oldId = t.State.Run!.Id;
+        RunState? archived = null;
+        t.RunArchived += r => archived = r;
+        Login(t, 30);
+        Gen(t, 31, "1_1_1"); Enter(t, 31);
+        Level(t, 60, "Hero_Beta");
+
+        Assert.NotNull(archived);
+        Assert.Equal(oldId, archived!.Id);
+        Assert.True(archived.Abandoned);
+        Assert.NotEqual(oldId, t.State.Run!.Id);
+        Assert.Equal("Hero_Beta", t.State.Run.CharacterName);
+        Assert.Equal(S(31), t.State.Run.StartedAt);
+        Assert.False(t.State.Foreign);
+        Assert.Equal(TimerStatus.Running, t.Status);
+        t.Tick(S(70), Play);
+        Assert.Equal(10, Total(t));
+    }
+
+    [Fact]
+    public void AltWithHigherLevelInStrandIsForeign()
+    {
+        var t = NewRun();
+        Level(t, 5, "Hero_Alpha");
+        Login(t, 30);
+        Gen(t, 31, "1_1_1"); Enter(t, 31);
+        LevelTo(t, 60, "Alt_Name", 5);
+        Assert.Equal(TimerStatus.OtherCharacter, t.Status);
+        Assert.Equal("Hero_Alpha", t.State.Run!.CharacterName);
+    }
+
+    [Fact]
+    public void AltLevelUpAfterLeavingAct1IsForeign()
+    {
+        var t = NewRun();
+        Level(t, 5, "Hero_Alpha");
+        Login(t, 30);
+        Gen(t, 31, "1_1_1"); Enter(t, 31);
+        Gen(t, 40, "1_2_1"); Enter(t, 40);
+        Level(t, 60, "Alt_Name");
+        Assert.Equal(TimerStatus.OtherCharacter, t.Status);
+        Assert.Equal("Hero_Alpha", t.State.Run!.CharacterName);
+    }
+
+    [Fact]
+    public void AltLevelUpAfterNonStrandLoginIsForeign()
+    {
+        var t = NewRun();
+        Level(t, 5, "Hero_Alpha");
+        Login(t, 30);
+        Gen(t, 31, "1_1_town"); Enter(t, 31);
+        Level(t, 60, "Alt_Name");
+        Assert.Equal(TimerStatus.OtherCharacter, t.Status);
+    }
+
     [Fact]
     public void LanguageEventIsRaised()
     {

@@ -31,6 +31,8 @@ public sealed class TimerState
     public bool ManualPause { get; set; }
     public bool LogFocused { get; set; } = true;
     public int LastAct { get; set; }
+    /// <summary>Set when the first zone after the latest login was the Twilight Strand.</summary>
+    public DateTime? StrandLoginAt { get; set; }
     public string? LogPath { get; set; }
     public long LogOffset { get; set; }
     public DateTime SavedAt { get; set; }
