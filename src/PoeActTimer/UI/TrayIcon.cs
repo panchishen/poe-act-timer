@@ -6,7 +6,12 @@ namespace PoeActTimer.UI;
 public sealed class TrayIcon : IDisposable
 {
     readonly NotifyIcon icon = new();
-    readonly Icon image = CreateImage();
+    readonly IntPtr handle;
+    readonly Icon image;
+    readonly ContextMenuStrip menu = new();
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    static extern bool DestroyIcon(IntPtr handle);
     readonly ToolStripMenuItem pause = new(), startNow = new(), reset = new(), history = new(), chooseLog = new(), exit = new();
 
     public TrayIcon(Action onPause, Action onStartNow, Action onReset, Action onHistory, Action onChooseLog, Action onExit)
@@ -18,7 +23,7 @@ public sealed class TrayIcon : IDisposable
         chooseLog.Click += (_, _) => onChooseLog();
         exit.Click += (_, _) => onExit();
 
-        var menu = new ContextMenuStrip();
+        (image, handle) = CreateImage();
         menu.Items.AddRange(new ToolStripItem[]
         {
             pause, startNow, reset, new ToolStripSeparator(), history, chooseLog, new ToolStripSeparator(), exit,
@@ -46,7 +51,7 @@ public sealed class TrayIcon : IDisposable
         if (item.Text != text) item.Text = text;
     }
 
-    static Icon CreateImage()
+    static (Icon, IntPtr) CreateImage()
     {
         using var bitmap = new Bitmap(32, 32);
         using (var g = Graphics.FromImage(bitmap))
@@ -59,7 +64,8 @@ public sealed class TrayIcon : IDisposable
             g.DrawLine(pen, 16, 16, 16, 8);
             g.DrawLine(pen, 16, 16, 22, 16);
         }
-        return Icon.FromHandle(bitmap.GetHicon());
+        var hicon = bitmap.GetHicon();
+        return (Icon.FromHandle(hicon), hicon);
     }
 
     public void Dispose()
@@ -67,5 +73,7 @@ public sealed class TrayIcon : IDisposable
         icon.Visible = false;
         icon.Dispose();
         image.Dispose();
+        DestroyIcon(handle);
+        menu.Dispose();
     }
 }

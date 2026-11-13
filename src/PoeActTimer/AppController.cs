@@ -22,7 +22,7 @@ public sealed class AppController : IDisposable
     DateTime lastSave = DateTime.MinValue, lastLogProbe = DateTime.MinValue;
     TimerStatus lastSavedStatus;
     GameSnapshot lastSnap;
-    bool disposed;
+    bool disposed, dialogOpen;
     static readonly TimeSpan LiveMaxGap = TimeSpan.FromSeconds(5);
 
     public AppController()
@@ -30,6 +30,9 @@ public sealed class AppController : IDisposable
         config = storage.LoadConfig();
         config.Opacity = Math.Clamp(config.Opacity, 0.2, 1.0);
         config.AfkSeconds = Math.Max(5, config.AfkSeconds);
+        if (string.IsNullOrWhiteSpace(config.HotkeyPause)) config.HotkeyPause = "Ctrl+Alt+P";
+        if (string.IsNullOrWhiteSpace(config.HotkeyToggle)) config.HotkeyToggle = "Ctrl+Alt+E";
+        if (string.IsNullOrWhiteSpace(config.HotkeyReset)) config.HotkeyReset = "Ctrl+Alt+R";
         state = storage.LoadState();
         timer = new RunTimer(state, TimeSpan.FromSeconds(config.AfkSeconds));
         timer.RunArchived += run => storage.AppendHistory(run);
@@ -56,7 +59,7 @@ public sealed class AppController : IDisposable
         hotkeys.Register(config.HotkeyReset, Safe(Reset));
 
         lastSnap = watcher.Snapshot();
-        AttachLog(DateTime.Now, allowCatchUp: true);
+        TryAttachLog(DateTime.Now, allowCatchUp: true);
         loop.Tick += (_, _) => Step();
         loop.Start();
         Step();
@@ -65,8 +68,33 @@ public sealed class AppController : IDisposable
     static Action Safe(Action action) => () =>
     {
         try { action(); }
-        catch (Exception) { }
+        catch (Exception ex) { LogError(ex); }
     };
+
+    static void LogError(Exception ex)
+    {
+        try
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, "error.log");
+            var info = new FileInfo(path);
+            if (info.Exists && info.Length > 1_000_000) info.Delete();
+            File.AppendAllText(path, $"{DateTime.Now:O} {ex.GetType().Name}: {ex.Message}{Environment.NewLine}");
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    void TryAttachLog(DateTime now, bool allowCatchUp)
+    {
+        try { AttachLog(now, allowCatchUp); }
+        catch (Exception ex)
+        {
+            LogError(ex);
+            tailer = null;
+            timer.Start(now, lastSnap);
+        }
+    }
 
     static string DefaultLanguage() =>
         CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "ru" ? "ru" : "en";
@@ -121,7 +149,7 @@ public sealed class AppController : IDisposable
             if (tailer is null && (now - lastLogProbe).TotalSeconds >= 5)
             {
                 lastLogProbe = now;
-                if (ClientLogLocator.Find(config.LogPath) is not null) AttachLog(now, allowCatchUp: false);
+                if (ClientLogLocator.Find(config.LogPath) is not null) TryAttachLog(now, allowCatchUp: false);
             }
 
             if (tailer is not null)
@@ -142,8 +170,9 @@ public sealed class AppController : IDisposable
             Present();
             if (timer.Status != lastSavedStatus || (now - lastSave).TotalSeconds >= 5) Save(now);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            LogError(ex);
         }
     }
 
@@ -191,6 +220,7 @@ public sealed class AppController : IDisposable
 
     void TogglePause()
     {
+        if (disposed) return;
         timer.ToggleManualPause(DateTime.Now, watcher.Snapshot());
         Save(DateTime.Now);
         Present();
@@ -198,6 +228,7 @@ public sealed class AppController : IDisposable
 
     void ToggleExpanded()
     {
+        if (disposed) return;
         overlay.Expanded = !overlay.Expanded;
         config.Expanded = overlay.Expanded;
         storage.SaveConfig(config);
@@ -206,13 +237,19 @@ public sealed class AppController : IDisposable
 
     bool Confirm(string text)
     {
-        using var owner = new Form { TopMost = true, ShowInTaskbar = false };
-        return MessageBox.Show(owner, text, "PoE Act Timer", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
+        dialogOpen = true;
+        try
+        {
+            using var owner = new Form { TopMost = true, ShowInTaskbar = false };
+            return MessageBox.Show(owner, text, "PoE Act Timer", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
+        }
+        finally { dialogOpen = false; }
     }
 
     void Reset()
     {
-        if (state.Run is null || !Confirm(strings.ResetConfirm)) return;
+        if (disposed || dialogOpen) return;
+        if (state.Run is null || !Confirm(strings.ResetConfirm) || disposed) return;
         timer.ResetRun(DateTime.Now, watcher.Snapshot());
         Save(DateTime.Now);
         Present();
@@ -220,7 +257,8 @@ public sealed class AppController : IDisposable
 
     void StartNow()
     {
-        if (state.Run is { FinishedAt: null } && !Confirm(strings.StartNowConfirm)) return;
+        if (disposed || dialogOpen) return;
+        if (state.Run is { FinishedAt: null } && (!Confirm(strings.StartNowConfirm) || disposed)) return;
         timer.StartRunNow(DateTime.Now, watcher.Snapshot());
         Save(DateTime.Now);
         Present();
@@ -228,17 +266,27 @@ public sealed class AppController : IDisposable
 
     void OpenHistory()
     {
+        if (disposed) return;
         storage.SaveHistoryIfMissing();
         Process.Start(new ProcessStartInfo(storage.HistoryPath) { UseShellExecute = true });
     }
 
     void ChooseLog()
     {
-        using var dialog = new OpenFileDialog { Filter = "Client.txt|Client.txt|*.txt|*.txt", FileName = "Client.txt" };
-        if (dialog.ShowDialog() != DialogResult.OK) return;
-        config.LogPath = dialog.FileName;
+        if (disposed || dialogOpen) return;
+        string fileName;
+        dialogOpen = true;
+        try
+        {
+            using var dialog = new OpenFileDialog { Filter = "Client.txt|Client.txt|*.txt|*.txt", FileName = "Client.txt" };
+            if (dialog.ShowDialog() != DialogResult.OK) return;
+            fileName = dialog.FileName;
+        }
+        finally { dialogOpen = false; }
+        if (disposed) return;
+        config.LogPath = fileName;
         storage.SaveConfig(config);
-        AttachLog(DateTime.Now, allowCatchUp: false);
+        TryAttachLog(DateTime.Now, allowCatchUp: false);
     }
 
     public void Shutdown()
