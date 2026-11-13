@@ -91,4 +91,17 @@ public sealed class StorageTests : IDisposable
         Assert.False(File.Exists(path + ".bak"));
         Assert.True(File.Exists(path));
     }
+
+    [Fact]
+    public void AppendHistoryWhileLockedDoesNotOverwrite()
+    {
+        var storage = new Storage(dir);
+        var original = new RunState();
+        storage.AppendHistory(original);
+        using (new FileStream(storage.HistoryPath, FileMode.Open, FileAccess.ReadWrite, FileShare.Write | FileShare.Delete))
+        {
+            storage.AppendHistory(new RunState());
+        }
+        Assert.Equal(original.Id, Assert.Single(storage.LoadHistory()).Id);
+    }
 }

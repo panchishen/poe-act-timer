@@ -21,7 +21,8 @@ public sealed class Storage
 
     public void AppendHistory(RunState run)
     {
-        var history = LoadHistory();
+        var history = Load<List<RunState>>("history.json", out bool unreadable) ?? new List<RunState>();
+        if (unreadable) return; // never overwrite history with a partial list
         int index = history.FindIndex(x => x.Id == run.Id);
         if (index >= 0) history[index] = run; else history.Add(run);
         Save("history.json", history);
@@ -38,8 +39,11 @@ public sealed class Storage
 
     string Full(string name) => Path.Combine(directory, name);
 
-    T? Load<T>(string name) where T : class
+    T? Load<T>(string name) where T : class => Load<T>(name, out _);
+
+    T? Load<T>(string name, out bool unreadable) where T : class
     {
+        unreadable = false;
         var path = Full(name);
         try
         {
@@ -48,6 +52,7 @@ public sealed class Storage
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            unreadable = true;
             return null;
         }
         catch (Exception ex) when (ex is JsonException or NotSupportedException)
