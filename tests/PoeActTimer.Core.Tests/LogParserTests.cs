@@ -56,9 +56,36 @@ public class LogParserTests
         Assert.IsType<GameClosed>(Assert.Single(LogParser.Parse(H + "[INFO Client 25780] Closing game gracefully")));
 
     [Fact]
+    public void IgnoresHeaderlessClosingLine() =>
+        Assert.Empty(LogParser.Parse("2026/11/13 19:43:42 Closing game gracefully"));
+
+    [Theory]
+    [InlineData("#Spammer: Closing game gracefully")]
+    [InlineData("#Spammer: ***** LOG FILE OPENING *****")]
+    public void IgnoresChatMimickingServiceLines(string body) =>
+        Assert.Empty(LogParser.Parse(H + "[INFO Client 12996] " + body));
+
+    [Fact]
+    public void IgnoresImpossibleHeaderDateTime() =>
+        Assert.Empty(LogParser.Parse("2026/13/45 99:99:99 1 abc [INFO Client 1] [WINDOW] Lost focus"));
+
+    [Fact]
+    public void IgnoresMalformedLoadingDuration() =>
+        Assert.Empty(LogParser.Parse(H + "[INFO Client 12996] [LOADING SCREEN] (x) Duration = 1.2.3 seconds"));
+
+    [Fact]
+    public void IgnoresOversizedAreaLevel() =>
+        Assert.Empty(LogParser.Parse(H + "[DEBUG Client 12996] Generating level 99999999999 area \"1_1_1\" with seed 1"));
+
+    [Fact]
+    public void IgnoresOversizedLevelUp() =>
+        Assert.Empty(LogParser.Parse(H + "[INFO Client 12996] : Hero_Name (Охотница) достигает 99999999999 уровня"));
+
+    [Fact]
     public void ParsesRussianLevelUpAndLanguage()
     {
         var events = LogParser.Parse(H + "[INFO Client 12996] : Hero_Name (Охотница) достигает 28 уровня");
+        Assert.Equal(2, events.Count);
         Assert.Equal(new LevelUp(At, "Hero_Name", 28), events[0]);
         Assert.Equal(new LanguageDetected(At, "ru"), events[1]);
     }
@@ -67,6 +94,7 @@ public class LogParserTests
     public void ParsesEnglishLevelUpAndLanguage()
     {
         var events = LogParser.Parse(H + "[INFO Client 12996] : Hero_Name (Huntress) is now level 28");
+        Assert.Equal(2, events.Count);
         Assert.Equal(new LevelUp(At, "Hero_Name", 28), events[0]);
         Assert.Equal(new LanguageDetected(At, "en"), events[1]);
     }
