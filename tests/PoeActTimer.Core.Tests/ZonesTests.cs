@@ -27,6 +27,13 @@ public class ZonesTests
         Assert.Equal(ZoneKind.Endgame, Zones.Classify(id).Kind);
 
     [Theory]
+    [InlineData("1_99999999999_x")]
+    [InlineData("1_0_x")]
+    [InlineData("2_12_x")]
+    public void OutOfRangeActsAreNeutral(string id) =>
+        Assert.Equal(new ZoneInfo(ZoneKind.Neutral, 0), Zones.Classify(id));
+
+    [Theory]
     [InlineData("HideoutPrimevalRuins")]
     [InlineData("ChayulaLeagueTowerBoss")]
     [InlineData("1_Labyrinth_boss_1")]

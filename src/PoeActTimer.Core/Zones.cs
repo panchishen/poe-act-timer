@@ -17,9 +17,8 @@ public static class Zones
     public static ZoneInfo Classify(string areaId)
     {
         var m = Campaign.Match(areaId);
-        if (m.Success)
+        if (m.Success && int.TryParse(m.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var act))
         {
-            int act = int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture);
             if (act is >= 1 and <= 10) return new(ZoneKind.Act, act);
             if (act == 11) return new(ZoneKind.Epilogue, 11);
         }
