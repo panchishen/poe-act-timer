@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Globalization;
 using PoeActTimer.Core;
 using PoeActTimer.Infra;
@@ -120,12 +120,18 @@ public sealed class AppController : IDisposable
         if (config.LogPath != path) { config.LogPath = path; storage.SaveConfig(config); }
 
         long length = LogTailer.CurrentLength(path);
-        bool catchUp = allowCatchUp && state.Run is { FinishedAt: null } && state.LogPath == path
+        // Replay even without an active run: it restores menu/first-zone state and catches a run
+        // that started while the timer was off. Without a run nothing is credited.
+        bool catchUp = allowCatchUp && state.LogPath == path
             && state.LogOffset > 0 && state.LogOffset <= length;
         if (catchUp)
         {
             tailer = new LogTailer(path, state.LogOffset);
-            LogCatchUp.Replay(timer, tailer.ReadAllNewLines(), state.SavedAt, now, lastSnap.GameRunning);
+            bool finishedBefore = state.Run is { FinishedAt: not null };
+            LogCatchUp.Replay(timer, tailer.ReadAllNewLines(), state.SavedAt, now, lastSnap.GameRunning, lastSnap.Idle);
+            // A run that finished during replay was archived before its recovered span was added: re-queue it.
+            if (!finishedBefore && state.Run is { FinishedAt: not null } finished)
+                storage.AppendHistory(finished);
         }
         else
         {
