@@ -12,7 +12,7 @@ public sealed record Strings(
     string TrayHistory, string TrayChooseLog, string TrayExit,
     string ResetConfirm, string StartNowConfirm, string FolderNotWritable)
 {
-    const string Nbsp = " ";
+    const string Nbsp = "\u00A0";
 
     public static readonly Strings Ru = new(
         ActFormat: "Акт" + Nbsp + "{0}",

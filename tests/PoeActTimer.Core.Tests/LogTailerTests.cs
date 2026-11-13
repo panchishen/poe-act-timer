@@ -39,7 +39,7 @@ public sealed class LogTailerTests : IDisposable
         Append("aaaaaaaaaa\n");
         var tailer = new LogTailer(path, LogTailer.CurrentLength(path));
         File.WriteAllText(path, "b\n");
-        Assert.Empty(tailer.ReadNewLines());
+        Assert.Equal(new[] { "b" }, tailer.ReadNewLines());
         Assert.Equal(new FileInfo(path).Length, tailer.Offset);
         Append("c\n");
         Assert.Equal(new[] { "c" }, tailer.ReadNewLines());

@@ -68,8 +68,12 @@ public sealed class TrayIcon : IDisposable
         return (Icon.FromHandle(hicon), hicon);
     }
 
+    bool disposed;
+
     public void Dispose()
     {
+        if (disposed) return;
+        disposed = true;
         icon.Visible = false;
         icon.Dispose();
         image.Dispose();

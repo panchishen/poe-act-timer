@@ -74,7 +74,7 @@ public sealed class AppController : IDisposable
         catch (Exception ex) { LogError(ex); }
     };
 
-    static void LogError(Exception ex) => LogMessage($"{ex.GetType().Name}: {ex.Message}");
+    internal static void LogError(Exception ex) => LogMessage(ex.ToString());
 
     internal static void LogMessage(string text)
     {

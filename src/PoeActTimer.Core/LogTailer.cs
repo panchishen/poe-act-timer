@@ -27,7 +27,7 @@ public sealed class LogTailer
         var lines = new List<string>();
         using var fs = new FileStream(Path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         long length = fs.Length;
-        if (length < Offset) { Offset = length; return lines; }
+        if (length < Offset) Offset = 0; // the log was truncated or replaced: read the new file from its start
         if (length == Offset) return lines;
 
         int size = (int)Math.Min(length - Offset, maxChunkBytes);

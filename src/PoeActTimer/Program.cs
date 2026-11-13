@@ -7,8 +7,23 @@ static class Program
     {
         using var mutex = new Mutex(true, "PoeActTimer.SingleInstance", out bool first);
         if (!first) return;
+
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+        Application.ThreadException += (_, e) => AppController.LogError(e.Exception);
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            AppController.LogMessage("Unhandled: " + e.ExceptionObject);
         ApplicationConfiguration.Initialize();
-        var controller = new AppController();
+
+        AppController controller;
+        try
+        {
+            controller = new AppController();
+        }
+        catch (Exception ex)
+        {
+            AppController.LogError(ex);
+            return;
+        }
         Application.Run();
         GC.KeepAlive(controller);
     }
